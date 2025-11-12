@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Gráficos</title>
+    
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;700&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+    <header class="main-header">
+        <h1>Dashboard de Estadísticas Globales</h1>
+    </header>
+
+    <div class="container">
+        
+        <a href="{{ url_for('index') }}" class="back-link" style="align-self: flex-start; margin-bottom: 10px;">&larr; Volver al Inicio</a>
+
+        <div class="dashboard-grid">
+            
+            <div class="dashboard-card" style="grid-column: 1 / -1;"> <h3>Detecciones en Tiempo Real (Historial)</h3>
+                <div class="chart-container" style="height: 350px;">
+                    <canvas id="realTimeChart"></canvas>
+                </div>
+            </div>
+
+            <div class="dashboard-card">
+                <h3>Comparativa Actual</h3>
+                <div class="chart-container" style="height: 300px;">
+                    <canvas id="barChart"></canvas>
+                </div>
+            </div>
+
+            <div class="dashboard-card">
+                <h3>Distribución (Personas vs. Vehículos)</h3>
+                <div class="chart-container" style="height: 300px;">
+                    <canvas id="doughnutChart"></canvas>
+                </div>
+            </div>
+
+        </div> </div>
+
+    <script>
+        // --- 1. Configuración del Gráfico de Líneas (realTimeChart) ---
+        const ctxLine = document.getElementById('realTimeChart').getContext('2d');
+        const MAX_DATA_POINTS = 60;
+        
+        const gradientPersonas = ctxLine.createLinearGradient(0, 0, 0, 350);
+        gradientPersonas.addColorStop(0, 'rgba(0, 220, 150, 0.8)');
+        gradientPersonas.addColorStop(1, 'rgba(0, 220, 150, 0.1)');
+
+        const gradientVehiculos = ctxLine.createLinearGradient(0, 0, 0, 350);
+        gradientVehiculos.addColorStop(0, 'rgba(255, 100, 100, 0.8)');
+        gradientVehiculos.addColorStop(1, 'rgba(255, 100, 100, 0.1)');
+
+        const lineChartData = {
+            labels: [],
+            datasets: [
+                { label: 'Personas', data: [], borderColor: 'rgb(0, 220, 150)', backgroundColor: gradientPersonas, borderWidth: 2, fill: true, tension: 0.3, pointRadius: 0 },
+                { label: 'Vehículos', data: [], borderColor: 'rgb(255, 100, 100)', backgroundColor: gradientVehiculos, borderWidth: 2, fill: true, tension: 0.3, pointRadius: 0 }
+            ]
+        };
+        
+        const realTimeChart = new Chart(ctxLine, {
+            type: 'line', data: lineChartData,
+            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { color: '#bbbbbb' }, grid: { color: 'rgba(255, 255, 255, 0.1)' } }, x: { ticks: { color: '#bbbbbb' }, grid: { color: 'rgba(255, 255, 255, 0.1)' } } }, plugins: { legend: { labels: { color: '#e0e0e0' } } } }
+        });
+
+        // --- 2. Configuración del Gráfico de Barras (barChart) ---
+        const ctxBar = document.getElementById('barChart').getContext('2d');
+        const barChart = new Chart(ctxBar, {
+            type: 'bar',
+            data: {
+                labels: ['Personas', 'Vehículos'],
+                datasets: [{
+                    label: 'Conteo Actual',
+                    data: [0, 0], // Inicia en 0
+                    backgroundColor: ['rgba(0, 220, 150, 0.8)', 'rgba(255, 100, 100, 0.8)'],
+                    borderColor: ['rgb(0, 220, 150)', 'rgb(255, 100, 100)'],
+                    borderWidth: 1
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { color: '#bbbbbb' } } } }
+        });
+
+        // --- 3. Configuración del Gráfico de Dona (doughnutChart) ---
+        const ctxDoughnut = document.getElementById('doughnutChart').getContext('2d');
+        const doughnutChart = new Chart(ctxDoughnut, {
+            type: 'doughnut',
+            data: {
+                labels: ['Personas', 'Vehículos'],
+                datasets: [{
+                    data: [1, 1], // Inicia 50/50 para que no se vea vacío
+                    backgroundColor: ['rgba(0, 220, 150, 0.8)', 'rgba(255, 100, 100, 0.8)'],
+                    borderColor: ['#2a2a2a'],
+                    borderWidth: 3
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#e0e0e0' } } } }
+        });
+
+        let timeCounter = 0;
+
+        // --- Función de Actualización (API) ---
+        // Actualiza TODOS los gráficos
+        setInterval(function() {
+            fetch("{{ url_for('api_stats') }}")
+                .then(response => response.json())
+                .then(data => {
+                    const personas = data.personas;
+                    const vehiculos = data.vehiculos;
+
+                    // 1. Actualiza Gráfico de Líneas
+                    const labels = lineChartData.labels;
+                    const personData = lineChartData.datasets[0].data;
+                    const vehicleData = lineChartData.datasets[1].data;
+                    
+                    timeCounter++;
+                    labels.push(timeCounter);
+                    personData.push(personas);
+                    vehicleData.push(vehiculos);
+
+                    if (labels.length > MAX_DATA_POINTS) {
+                        labels.shift();
+                        personData.shift();
+                        vehicleData.shift();
+                    }
+                    realTimeChart.update('none'); // 'none' para una actualización más suave
+
+                    // 2. Actualiza Gráfico de Barras
+                    barChart.data.datasets[0].data = [personas, vehiculos];
+                    barChart.update('none');
+
+                    // 3. Actualiza Gráfico de Dona
+                    // (Evita dividir por cero si no hay datos)
+                    const total = personas + vehiculos;
+                    doughnutChart.data.datasets[0].data = [
+                        total > 0 ? (personas / total) * 100 : 0,
+                        total > 0 ? (vehiculos / total) * 100 : 0
+                    ];
+                    doughnutChart.update('none');
+                })
+                .catch(error => console.error('Error al cargar estadísticas:', error));
+        }, 1000); 
+    </script>
+</body>
+</html>
